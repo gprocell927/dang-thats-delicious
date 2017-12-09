@@ -32,8 +32,23 @@ const storeSchema = new mongoose.Schema({
       required: 'You must supply and address!'
     }
   },
-  photo: String
+  photo: String,
+  author: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'User',
+    required: 'You must supply an author'
+  }
 });
+
+// Define our indexes
+storeSchema.index({
+  name: 'text',
+  description: 'text'
+});
+
+storeSchema.index({
+  location: '2dsphere'
+})
 
 storeSchema.pre('save', async function(next) {
   if(!this.isModified('name')){
@@ -58,7 +73,7 @@ storeSchema.statics.getTagsList = function() {
     // group everything based on tag field, then create a new field (count)
     // each time we group, count will add 1
     { $group: { _id: '$tags', count: { $sum: 1 } } },
-    // sort in descending order 
+    // sort in descending order
     { $sort: { count: -1 } }
   ]);
 }

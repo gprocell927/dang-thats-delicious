@@ -45,6 +45,7 @@ exports.resize = async (req, res, next) => {
 
 
 exports.createStore = async (req, res) => {
+  req.body.author = req.user._id;
   const store = await (new Store(req.body)).save();
   req.flash('success', `Successfully Created ${store.name}. Care to leave a review?`)
   res.redirect(`/store/${store.slug}`);
@@ -56,14 +57,22 @@ exports.getStores = async (req, res) => {
 };
 
 exports.getStoreBySlug = async (req, res, next) => {
-  const store = await Store.findOne({ slug: req.params.slug });
+  const store = await Store.findOne({ slug: req.params.slug }).populate('author');
   if(!store) return next();
   res.render('store', { title: store.name, store });
 }
 
+const confirmOwner = (store, user) => {
+  if (!store.author.equals(user._id)) {
+    throw Error('You must own a store in order to edit it!');
+  }
+
+}
 exports.editStore = async (req, res) => {
   // 1. Find the store given the ID
   const store = await Store.findOne({ _id: req.params.id });
+  // 2. Confirm that they are the owner of the store.
+  confirmOwner(store, req.user)
   // Render out the edit form so the user can update the store
   res.render('editStore', {title: `Edit ${ store.name }`, store, })
 
@@ -79,7 +88,7 @@ exports.updateStore = async (req, res) => {
   }).exec();
   // Redirect them to the store and tell them it worked
   req.flash('success', `Successfully updated <strong>${store.name}</strong>.
-  <a href="/stores/${store.slug}">View Store => </a>`);
+  <a href="/store/${store.slug}">View Store => </a>`);
   res.redirect(`/stores/${store._id}/edit`);
   };
 
@@ -92,3 +101,42 @@ exports.getStoresByTag = async(req, res) => {
 
   res.render('tag', { tags, title: 'Tags', tag, stores });
 }
+
+exports.searchStores = async (req, res) => {
+  const stores = await Store.find({
+    // find stores that match
+    $text: {
+      $search: req.query.q
+    }
+  }, {
+    score: { $meta: 'textScore' }
+  })
+  // sort the stores
+  .sort({
+    score: { $meta: 'textScore' }
+  })
+  // limit to only 5 results
+  .limit(5);
+  res.json(stores);
+}
+
+exports.mapStores = async(req, res) => {
+  const coordinates = [req.query.lng, req.query.lat].map(parseFloat);
+  const q = {
+    location: {
+      $near: {
+        $geometry: {
+          type: 'Point',
+          coordinates
+        },
+        $maxDistance: 10000 // 10km
+      }
+    }
+  }
+
+  const stores = await Store.find(q).select('slug name description location').limit(10);
+  res.json(stores);
+};
+ exports.mapPage = (req, res) => {
+   res.render('map', { title: 'Map' });
+ }
